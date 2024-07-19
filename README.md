@@ -254,4 +254,84 @@ function _validateSwapData(bytes calldata _data) internal pure returns (bool) {
  return true;
 }
 ```
-These improvements ensure that the `_fillQuote` function is secure and prevent malicious users from abusing the system.
+After adding the logical operators and a few omissions, the contract should look like what I added below, I also added other logical checks to the `_validateSwapData` function. These checks will be used to check the accuracy and logic of the data contained in `_swapCallData`. This is a vulnerability that can be considered critical.
+
+### The `_validateSwapData` Function I Redeveloped
+
+This function ensures that the transaction is safe by validating important data such as `selector`, `inputToken`, `outputToken`, `inputTokenAmount`, and `recipient`.
+
+```solidity
+//an additional function to validate _swapCallData
+function _validateSwapData(bytes calldata _data) internal pure returns (bool) {
+ bytes4 selector;
+ address inputToken;
+ address outputToken;
+ uint256 inputTokenAmount;
+ address recipient;
+
+ //get selector
+ assembly {
+ selector := calldataload(_data.offset)
+ }
+
+ // Check expected selector (e.g. UniswapV5 can be used)
+ if (selector != 0x12345678) { // For example, the expected selector
+ return false;
+ }
+
+ /* Get inputToken, outputToken, inputTokenAmount and recipient values ​​*/
+ assembly {
+ let p := add(_data.offset, 4) // first data slot after selector
+ inputToken := calldataload(p)
+ outputToken := calldataload(add(p, 32))
+ inputTokenAmount := calldataload(add(p, 64))
+ recipient := calldataload(add(p, 96))
+ }
+
+ /* Checking expected token addresses and amounts */
+ if (inputToken == address(0) || outputToken == address(0) || inputTokenAmount == 0 || recipient == address(0)) {
+ return false;
+ }
+
+ /* Checking whether inputToken and outputToken make sense (for example, assuming it should be WETH, it would look something like this:) */
+
+ if (outputToken != address(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2)) { // WETH address
+ return false;
+ }
+
+ // recipient check:
+ if (recipient != address(this)) {
+ return false;
+ }
+
+ return true;
+}
+```
+
+### The `_fillQuote` Function I Redeveloped
+
+```solidity
+function _fillQuote(IERC20 _sellToken, uint256 _amount, bytes calldata _swapCallData) internal {
+ // Track our balance of the buyToken to determine how much we've bought.
+ uint256 boughtWETHAmount = WETH.balanceOf(address(this));
+
+ require(_sellToken.approve(exchangeProxy, _amount), "Sell token approval failed");
+
+ // Additional validations must be performed on _swapCallData
+ require(_validateSwapData(_swapCallData), "Invalid swap call data");
+
+ (bool success,) = payable(exchangeProxy).call{value: 0}(_swapCallData);
+ require(success, "Swap call failed");
+
+ // Use our current buyToken balance to determine how much we've bought.
+ boughtWETHAmount = WETH.balanceOf(address(this)) - boughtWETHAmount;
+ emit SwappedTokens(address(_sellToken), _amount, boughtWETHAmount);
+}
+```
+
+### Explanation
+
+- **Selector Check:** `_validateSwapData` function checks the selector in `_swapCallData` and returns `false` when the expected selector is not present.
+- **Token and Amount Checks:** Checks whether data such as `inputToken`, `outputToken`, `inputTokenAmount` and `recipient` make sense. This prevents the use of invalid or null addresses.
+- **Output Token Check:** Checks whether `outputToken` is a WETH address.
+- **Recipient Checking:** Redesigned to check whether the `recipient` address is the contract address.
