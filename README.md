@@ -3,7 +3,7 @@ project: "LoopFi"
 contract: "PrelaunchPoints.sol"
 date: "2024-07-19"
 title: "LoopFi Bounty"
-findings: "[Report Markdown](https://github.com/virjilakrum/LoopFi_PrelaunchPoints_Audit/blob/main/README.md)"
+findings: "https://github.com/virjilakrum/LoopFi_PrelaunchPoints_Audit/blob/main/README.md"
 SLOC: 135
 ---
 
