@@ -1,5 +1,3 @@
-# LoopFi PrelaunchPoints.sol Audit Report
-
 ---
 project: "LoopFi"
 contract: "PrelaunchPoints.sol"
@@ -9,7 +7,7 @@ findings: "[Report Markdown](https://github.com/virjilakrum/LoopFi_PrelaunchPoin
 SLOC: 135
 ---
 
-
+# LoopFi PrelaunchPoints.sol Audit Report
 There are certain deficiencies in your current `_validateData` function. In particular, it may allow malicious users to take advantage of these deficiencies to perform harmful actions. Below are descriptions and an example scenario of the shortcomings in the function and how they can be exploited.
 shortcomings
 
